@@ -9,7 +9,22 @@ description: Use when an agent needs to read, update, or verify todos through th
 
 Zu Tun is a file-backed macOS todo app. The main window, menu bar popover, and widget read and write a Markdown file named `todo.md`.
 
-When the user says "my todos", "the widget todos", "todo.md", or "Zu Tun todos", use the configured todo file. In Jonas's local setup this is `/Users/jonaslaux/TODOs/TODO/todo.md`; for other users, ask for the file path or use the folder selected in the app.
+When the user says "my todos", "the widget todos", "todo.md", or "Zu Tun todos", resolve the configured todo file first. Do not assume a fixed path.
+
+The app publishes its selected todo path to an app-group sidecar named `todo-path.txt`. From this repo, resolve it like this:
+
+```sh
+APP_GROUP="$(rg -o 'appGroupIdentifier = "[^"]+"' Sources/ZuTunCore/Models/TodoLocation.swift | sed -E 's/.*"([^"]+)"/\1/')"
+SIDECAR="$HOME/Library/Group Containers/$APP_GROUP/todo-path.txt"
+
+if [ -s "$SIDECAR" ]; then
+  TODO_FILE="$(sed -n '1p' "$SIDECAR")"
+else
+  TODO_FILE="$HOME/Library/Group Containers/$APP_GROUP/todo.md"
+fi
+```
+
+Read and edit `$TODO_FILE`. If the sidecar points to a missing file, create `todo.md` there only when the user asks to add/update todos; otherwise report the missing configured file.
 
 ## Todo Format
 
