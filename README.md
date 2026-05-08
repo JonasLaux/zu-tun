@@ -49,6 +49,10 @@ swift run ZuTunParserCheck
 ./script/build_and_run.sh --verify-widget
 ```
 
+## Agent Skill
+
+A Codex-compatible agent skill lives at `skills/zu-tun/SKILL.md`. It documents the todo format, safe edit workflow, and local verification commands for agents working with Zu Tun.
+
 ## Signing
 
 This repo is configured for my personal bundle identifier and app group. To build under your own Apple Developer account, update:
