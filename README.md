@@ -7,6 +7,12 @@ Zu Tun is a small macOS todo app backed by a plain `todo.md` file. It gives you 
   <img src="assets/screenshots/widget.png" alt="Zu Tun widget" width="260">
 </p>
 
+## Why
+
+I built Zu Tun because I wanted a todo list that agents can update without an API, account, or custom backend. During a morning briefing, an agent can pull action items from meetings, emails, or Slack messages, write them into a plain Markdown file, and make them show up in a small Mac app and widget.
+
+I sync the file through Obsidian, so the workflow stays portable: humans and agents work against the same `todo.md`.
+
 The app stores todos as Markdown checkboxes:
 
 ```md
