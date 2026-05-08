@@ -2,6 +2,11 @@
 
 Zu Tun is a small macOS todo app backed by a plain `todo.md` file. It gives you a main window, a menu bar popover, and a WidgetKit widget for quickly scanning and checking off tasks.
 
+<p>
+  <img src="assets/screenshots/app.png" alt="Zu Tun app window" width="320">
+  <img src="assets/screenshots/widget.png" alt="Zu Tun widget" width="260">
+</p>
+
 The app stores todos as Markdown checkboxes:
 
 ```md
