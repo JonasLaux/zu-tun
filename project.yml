@@ -1,0 +1,58 @@
+name: ZuTun
+options:
+  bundleIdPrefix: dev.jonaslaux
+  deploymentTarget:
+    macOS: "14.0"
+settings:
+  base:
+    DEVELOPMENT_TEAM: X38QBU523M
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  ZuTunCore:
+    type: library.static
+    platform: macOS
+    sources:
+      - Sources/ZuTunCore
+    settings:
+      base:
+        PRODUCT_NAME: ZuTunCore
+        DEFINES_MODULE: YES
+        SKIP_INSTALL: YES
+
+  ZuTun:
+    type: application
+    platform: macOS
+    sources:
+      - Sources/ZuTun
+    dependencies:
+      - target: ZuTunCore
+      - target: ZuTunWidgetExtension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.jonaslaux.ZuTun
+        PRODUCT_NAME: ZuTun
+        INFOPLIST_FILE: Resources/ZuTun/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Entitlements/ZuTun.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+
+  ZuTunWidgetExtension:
+    type: app-extension
+    platform: macOS
+    sources:
+      - Sources/ZuTunWidget
+    dependencies:
+      - target: ZuTunCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.jonaslaux.ZuTun.WidgetExtension
+        PRODUCT_NAME: ZuTunWidgetExtension
+        INFOPLIST_FILE: Resources/ZuTunWidget/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Entitlements/ZuTunWidget.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../../../../Frameworks"
+          - "@executable_path/../../Frameworks"

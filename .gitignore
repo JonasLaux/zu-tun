@@ -1,0 +1,29 @@
+.build/
+build/
+dist/
+.DS_Store
+*.swp
+
+# Local agent/tool state
+.codex/
+.omc/
+
+# Xcode local state and build output
+ZuTun.xcodeproj/
+DerivedData/
+*.xcarchive
+*.xcresult
+*.dSYM
+*.dSYM.zip
+*.hmap
+*.ipa
+*.xcuserstate
+*.xcscmblueprint
+xcuserdata/
+
+# SwiftPM local state
+.swiftpm/
+
+# Editor state
+.idea/
+.vscode/
