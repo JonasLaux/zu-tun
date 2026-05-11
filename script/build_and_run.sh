@@ -14,6 +14,7 @@ BUILT_APP_BUNDLE="$DERIVED_DATA/Build/Products/$CONFIGURATION/$APP_NAME.app"
 INSTALL_DIR="${ZUTUN_INSTALL_DIR:-/Applications}"
 INSTALLED_APP_BUNDLE="$INSTALL_DIR/$APP_NAME.app"
 INSTALLED_WIDGET_BUNDLE="$INSTALLED_APP_BUNDLE/Contents/PlugIns/$WIDGET_NAME.appex"
+LEGACY_APP_BUNDLE="$HOME/Applications/$APP_NAME.app"
 
 cd "$ROOT_DIR"
 
@@ -29,6 +30,9 @@ xcodebuild \
   build
 
 mkdir -p "$INSTALL_DIR"
+if [[ "$INSTALL_DIR" == "/Applications" && -d "$LEGACY_APP_BUNDLE" ]]; then
+  rm -rf "$LEGACY_APP_BUNDLE"
+fi
 rm -rf "$INSTALLED_APP_BUNDLE"
 ditto "$BUILT_APP_BUNDLE" "$INSTALLED_APP_BUNDLE"
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$INSTALLED_APP_BUNDLE" >/dev/null 2>&1 || true

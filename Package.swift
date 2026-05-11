@@ -20,6 +20,10 @@ let package = Package(
         .executableTarget(
             name: "ZuTunParserCheck",
             dependencies: ["ZuTunCore"]
+        ),
+        .testTarget(
+            name: "ZuTunCoreTests",
+            dependencies: ["ZuTunCore"]
         )
     ]
 )

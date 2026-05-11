@@ -16,6 +16,8 @@ final class TodoStore: ObservableObject {
     @Published private(set) var lastLoadedAt: Date?
     @Published private(set) var completionEvent: TodoCompletionEvent?
     @Published private(set) var fileURL: URL
+    @Published private(set) var widgetSyncHealth: WidgetSyncHealth
+    @Published private(set) var installHealth = AppInstallHealth.current()
 
     private var lastKnownSignature: FileSignature?
     private var pollTask: Task<Void, Never>?
@@ -23,6 +25,7 @@ final class TodoStore: ObservableObject {
 
     init(fileURL: URL = TodoLocation.currentTodoURL) {
         self.fileURL = fileURL
+        self.widgetSyncHealth = WidgetSyncHealth.current(todoURL: fileURL)
     }
 
     deinit {
@@ -39,6 +42,7 @@ final class TodoStore: ObservableObject {
 
         observeLocationChanges()
         TodoLocation.publishPathSidecar()
+        refreshInstallHealth()
         reloadFromDisk()
         processPendingWidgetToggles()
         WidgetCenter.shared.reloadAllTimelines()
@@ -58,6 +62,7 @@ final class TodoStore: ObservableObject {
             publishWidgetSnapshot()
         } catch {
             errorMessage = "Could not read \(fileURL.path): \(error.localizedDescription)"
+            updateWidgetSyncHealth()
         }
     }
 
@@ -80,6 +85,30 @@ final class TodoStore: ObservableObject {
 
         document.appendTodo(title: trimmedTitle, priority: priority)
         saveDocument()
+    }
+
+    func refreshWidgetSnapshot() {
+        reloadFromDisk()
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    var statusWarning: String? {
+        if let installWarning = installHealth.warning {
+            return installWarning
+        }
+
+        switch widgetSyncHealth.state {
+        case .synced:
+            return nil
+        case .stale:
+            return "Widget cache is stale"
+        case .missingTodo:
+            return "Todo file is missing"
+        case .missingCache:
+            return "Widget cache is missing"
+        case .unreadable:
+            return "Widget sync needs attention"
+        }
     }
 
     func toggle(_ item: TodoItem) {
@@ -187,9 +216,12 @@ final class TodoStore: ObservableObject {
             if currentSignature != lastKnownSignature {
                 reloadFromDisk()
                 WidgetCenter.shared.reloadAllTimelines()
+            } else {
+                updateWidgetSyncHealth()
             }
         } catch {
             errorMessage = "Could not watch \(fileURL.path): \(error.localizedDescription)"
+            updateWidgetSyncHealth()
         }
     }
 
@@ -207,6 +239,7 @@ final class TodoStore: ObservableObject {
             return true
         } catch {
             errorMessage = "Could not write \(fileURL.path): \(error.localizedDescription)"
+            updateWidgetSyncHealth()
             return false
         }
     }
@@ -258,6 +291,7 @@ final class TodoStore: ObservableObject {
         } catch {
             errorMessage = "Could not update widget cache: \(error.localizedDescription)"
         }
+        updateWidgetSyncHealth()
     }
 
     private func signature(for url: URL) throws -> FileSignature {
@@ -266,9 +300,45 @@ final class TodoStore: ObservableObject {
         let size = (attributes[.size] as? NSNumber)?.uint64Value
         return FileSignature(modifiedAt: modifiedAt, size: size)
     }
+
+    private func updateWidgetSyncHealth() {
+        widgetSyncHealth = WidgetSyncHealth.current(todoURL: fileURL)
+    }
+
+    private func refreshInstallHealth() {
+        installHealth = AppInstallHealth.current()
+    }
 }
 
 private struct FileSignature: Equatable {
     var modifiedAt: Date?
     var size: UInt64?
+}
+
+struct AppInstallHealth: Equatable {
+    var runningPath: String
+    var warning: String?
+
+    static func current(bundleURL: URL = Bundle.main.bundleURL) -> AppInstallHealth {
+        let fileManager = FileManager.default
+        let runningURL = bundleURL.standardizedFileURL.resolvingSymlinksInPath()
+        let expectedURL = URL(fileURLWithPath: "/Applications/ZuTun.app")
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+        let legacyURL = fileManager.homeDirectoryForCurrentUser
+            .appendingPathComponent("Applications/ZuTun.app")
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+
+        let warning: String?
+        if runningURL == legacyURL {
+            warning = "Running old app copy from ~/Applications"
+        } else if fileManager.fileExists(atPath: legacyURL.path), runningURL == expectedURL {
+            warning = "Old app copy exists in ~/Applications"
+        } else {
+            warning = nil
+        }
+
+        return AppInstallHealth(runningPath: runningURL.path, warning: warning)
+    }
 }
