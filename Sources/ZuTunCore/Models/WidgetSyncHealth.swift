@@ -82,6 +82,7 @@ private struct WidgetTodoSnapshot: Equatable {
     var isCompleted: Bool
     var priority: TodoPriority?
     var title: String
+    var parking: TodoParking?
 }
 
 private extension TodoDocument {
@@ -91,7 +92,8 @@ private extension TodoDocument {
                 id: $0.id,
                 isCompleted: $0.isCompleted,
                 priority: $0.priority,
-                title: $0.title
+                title: $0.title,
+                parking: $0.parking
             )
         }
     }

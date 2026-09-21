@@ -8,6 +8,7 @@ public struct TodoItem: Equatable, Identifiable, Sendable {
     public var title: String
     public var tagIDs: [String]
     public var referenceID: UUID?
+    public var parking: TodoParking?
 
     public init(
         id: UUID = UUID(),
@@ -16,7 +17,8 @@ public struct TodoItem: Equatable, Identifiable, Sendable {
         priority: TodoPriority?,
         title: String,
         tagIDs: [String] = [],
-        referenceID: UUID? = nil
+        referenceID: UUID? = nil,
+        parking: TodoParking? = nil
     ) {
         self.id = id
         self.indent = indent
@@ -25,6 +27,20 @@ public struct TodoItem: Equatable, Identifiable, Sendable {
         self.title = title
         self.tagIDs = tagIDs
         self.referenceID = referenceID
+        self.parking = parking
+    }
+
+    public func isParked(at date: Date) -> Bool {
+        guard !isCompleted, let parking else {
+            return false
+        }
+
+        switch parking {
+        case .until(let returnDate):
+            return returnDate > date
+        case .indefinite:
+            return true
+        }
     }
 
     public var markdownLine: String {
@@ -32,7 +48,8 @@ public struct TodoItem: Equatable, Identifiable, Sendable {
         let priorityText = priority.map { "(\($0.rawValue)) " } ?? ""
         let reference = referenceID.map { " <!-- zutun-id: \($0.uuidString) -->" } ?? ""
         let tags = tagIDs.isEmpty ? "" : " <!-- zutun-tags: \(tagIDsJSON) -->"
-        return "\(indent)- [\(checkmark)] \(priorityText)\(TodoTextFormatting.markdownTitle(title))\(reference)\(tags)"
+        let parking = parking.map { " <!-- zutun-parked: \($0.markdownValue) -->" } ?? ""
+        return "\(indent)- [\(checkmark)] \(priorityText)\(TodoTextFormatting.markdownTitle(title))\(reference)\(tags)\(parking)"
     }
 
     private var tagIDsJSON: String {

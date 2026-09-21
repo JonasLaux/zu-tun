@@ -55,6 +55,38 @@ to add. Normal rows show all explicit lines, while widgets keep compact limits.
 To display a literal `<br>`, write `&lt;br&gt;`. Never use a physical
 continuation line or a new checkbox for the wrapped text.
 
+## Parked Tasks
+
+Parking is a waiting or snooze state for an unfinished task. It is separate
+from completion and does not add a new checkbox status. Store it as one
+trailing HTML comment on the task line:
+
+```markdown
+- [ ] (P2) Wait for approval <!-- zutun-parked: 2026-09-22T07:00:00Z -->
+- [ ] (P2) Revisit later <!-- zutun-parked: indefinite -->
+```
+
+Use an ISO 8601 timestamp with an explicit timezone. `indefinite` has no
+automatic return. The parking comment may appear before or after existing
+`zutun-id` and `zutun-tags` comments in any order; preserve every comment on
+the same physical Markdown line.
+
+For an active overview, an unfinished task is hidden when it is parked until a
+future timestamp or indefinitely. A task whose timestamp has expired becomes
+active automatically. Completed tasks are never active, regardless of a
+parking comment. Active counts exclude parked tasks; the app keeps parked
+items accessible in its collapsed **Parked** section with actions to bring one
+back or change its return time.
+
+The available parking choices are 1 hour, tomorrow at 09:00 local time, 7
+calendar days at the same local time, a custom future date and time, or
+indefinitely. Expiry means “check again,” not that an external blocker is
+cleared. When parking a task, add its `zutun-parked` comment; replace the existing
+comment when rescheduling instead of appending a second one. When
+bringing it back, remove only that comment. Preserve the parking comment during
+unrelated edits to task text, priority, tags, IDs, or ordering, and do not
+rewrite the task when its timestamp expires.
+
 ## Reusable Tags
 
 Tags live in the same Markdown file. Define each tag once on its own line:

@@ -19,6 +19,10 @@ final class TodoStore: ObservableObject {
     @Published private(set) var fileURL: URL
     @Published private(set) var widgetSyncHealth: WidgetSyncHealth
     @Published private(set) var installHealth = AppInstallHealth.current()
+    @Published private(set) var currentDate = Date()
+
+    var activeTodos: [TodoItem] { document.activeTodos(at: currentDate) }
+    var parkedTodos: [TodoItem] { document.parkedTodos(at: currentDate) }
 
     private var lastKnownSignature: FileSignature?
     private var pollTask: Task<Void, Never>?
@@ -64,6 +68,7 @@ final class TodoStore: ObservableObject {
 
     func reloadFromDisk() {
         do {
+            currentDate = Date()
             document = try TodoLocation.withFolderAccess { _ in
                 try TodoFile.loadDocument(from: fileURL)
             }
@@ -248,6 +253,48 @@ final class TodoStore: ObservableObject {
         }
     }
 
+    @discardableResult
+    func setParking(_ parking: TodoParking?, for item: TodoItem) -> Bool {
+        let now = Date()
+        if case .until(let date) = parking, date <= now || !date.timeIntervalSince1970.isFinite {
+            errorMessage = "Choose a future date and time to park this todo."
+            return false
+        }
+
+        do {
+            guard try signature(for: fileURL) == lastKnownSignature,
+                  !item.isCompleted,
+                  document.todos.contains(item) else {
+                reloadFromDisk()
+                errorMessage = "The todo changed. Please try your parking change again."
+                return false
+            }
+            let previous = document
+            guard document.updateTodo(id: item.id, { $0.parking = parking }) else { return false }
+            guard saveDocument() else {
+                document = previous
+                return false
+            }
+            currentDate = now
+            return true
+        } catch {
+            errorMessage = "Could not read the todo file: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    // Expiry changes visibility, not the file. Checking the wall clock also
+    // catches tasks that became available while the Mac was asleep.
+    func refreshParking(at date: Date = Date()) {
+        let visibilityChanged = document.openTodos.contains {
+            $0.isParked(at: currentDate) != $0.isParked(at: date)
+        }
+        currentDate = date
+        if visibilityChanged && syncsWidget {
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+    }
+
     func setPriority(_ priority: TodoPriority?, for item: TodoItem) {
         setPriority(priority, forTodoID: item.id)
     }
@@ -271,6 +318,7 @@ final class TodoStore: ObservableObject {
             document.updateTodo(id: id) {
                 $0.isCompleted = false
                 $0.priority = priority
+                $0.parking = nil
             } || changed
         }
 
@@ -325,7 +373,8 @@ final class TodoStore: ObservableObject {
 
     private func pollForExternalChanges() async {
         while !Task.isCancelled {
-            try? await Task.sleep(for: .seconds(1))
+            do { try await Task.sleep(for: .seconds(1)) } catch { return }
+            refreshParking()
             processPendingWidgetToggles()
             reloadIfChanged()
         }

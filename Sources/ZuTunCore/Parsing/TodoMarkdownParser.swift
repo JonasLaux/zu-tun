@@ -5,11 +5,13 @@ public enum TodoMarkdownParser {
     private static let tagPattern = #"^\s*<!--\s*zutun-tag:\s*(\{.*\})\s*-->\s*$"#
     private static let tagIDsPattern = #"^(.*?)(?:\s+)?<!--\s*zutun-tags:\s*(\[.*\])\s*-->\s*$"#
     private static let referenceIDPattern = #"^(.*?)(?:\s+)?<!--\s*zutun-id:\s*([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})\s*-->\s*$"#
+    private static let parkingPattern = #"^(.*?)(?:\s+)?<!--\s*zutun-parked:\s*([^>]*)\s*-->\s*$"#
 
     public static func parse(_ markdown: String) -> TodoDocument {
         let regex = try? NSRegularExpression(pattern: todoPattern)
         let tagRegex = try? NSRegularExpression(pattern: tagPattern)
         let tagIDsRegex = try? NSRegularExpression(pattern: tagIDsPattern)
+        let parkingRegex = try? NSRegularExpression(pattern: parkingPattern)
         // `String.split(separator:)` treats CRLF as one Character on some
         // Swift runtimes. Components keeps physical lines and their `\r`
         // bytes intact for parsing while TodoShareReference patches the
@@ -39,7 +41,11 @@ public enum TodoMarkdownParser {
             let priority = capture(3, in: line, match: match).flatMap(TodoPriority.init(rawValue:))
             let originalTitle = capture(4, in: line, match: match)?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let parsedMetadata = parseMetadata(from: originalTitle, tagIDsRegex: tagIDsRegex)
+            let parsedMetadata = parseMetadata(
+                from: originalTitle,
+                tagIDsRegex: tagIDsRegex,
+                parkingRegex: parkingRegex
+            )
 
             return .todo(
                 TodoItem(
@@ -49,7 +55,8 @@ public enum TodoMarkdownParser {
                     priority: priority,
                     title: TodoTextFormatting.titleFromMarkdown(parsedMetadata.title),
                     tagIDs: parsedMetadata.tagIDs,
-                    referenceID: parsedMetadata.referenceID
+                    referenceID: parsedMetadata.referenceID,
+                    parking: parsedMetadata.parking
                 )
             )
         }
@@ -76,12 +83,14 @@ public enum TodoMarkdownParser {
 
     private static func parseMetadata(
         from title: String,
-        tagIDsRegex: NSRegularExpression?
-    ) -> (title: String, tagIDs: [String], referenceID: UUID?) {
+        tagIDsRegex: NSRegularExpression?,
+        parkingRegex: NSRegularExpression?
+    ) -> (title: String, tagIDs: [String], referenceID: UUID?, parking: TodoParking?) {
         let referenceRegex = try? NSRegularExpression(pattern: referenceIDPattern)
         var remaining = title
         var tagIDs: [String] = []
         var referenceID: UUID?
+        var parking: TodoParking?
 
         // Metadata is allowed in either trailing order. Strip one valid
         // comment at a time so a valid ID remains discoverable beside tags.
@@ -115,12 +124,23 @@ public enum TodoMarkdownParser {
                 strippedTagIDs = true
                 strippedMetadata = true
             }
+
+            if let parkingRegex,
+               let match = firstMatch(in: remaining, using: parkingRegex),
+               let rawParking = capture(2, in: remaining, match: match),
+               let parsedParking = TodoParking.parseMarkdownValue(rawParking) {
+                parking = parking ?? parsedParking
+                remaining = capture(1, in: remaining, match: match)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                strippedMetadata = true
+            }
         }
 
         return (
             remaining.trimmingCharacters(in: .whitespacesAndNewlines),
             tagIDs,
-            referenceID
+            referenceID,
+            parking
         )
     }
 

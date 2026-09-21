@@ -63,6 +63,32 @@ Tags live in the same Markdown file. Define each tag once on its own line:
 - Preserve unknown IDs and malformed metadata during unrelated edits. Do not
   convert ordinary hashtags in task text into tags.
 
+## Parked Todos
+
+Park a task when it is waiting on an external dependency or you want it out of
+the active overview for now. Parking is separate from completion and is stored
+as a trailing HTML comment:
+
+```md
+- [ ] (P2) Wait for approval <!-- zutun-parked: 2026-09-22T07:00:00Z -->
+- [ ] (P2) Revisit later <!-- zutun-parked: indefinite -->
+```
+
+Park timestamps are ISO 8601 values with an explicit timezone. The parking
+comment can appear alongside existing `zutun-id` and `zutun-tags` comments in
+any order, and all metadata stays on the task's one physical Markdown line.
+Future and indefinite parked tasks are excluded from the active main window,
+menu bar, widget, and active counts. A task becomes active automatically when
+its timestamp expires. Completed tasks are never active. Parked tasks stay in
+their original location with their priority and tags, and remain available in
+the collapsed **Parked** section, where they can be brought back or rescheduled.
+
+The parking choices are **1 hour**, **tomorrow at 09:00 local time**, **7
+calendar days at the same local time**, **a custom future date and time**, or
+**indefinitely**. Expiry means it is time to check again; it does not prove
+that the external blocker has cleared. To bring a task back immediately,
+remove only its `zutun-parked` comment.
+
 ## Features
 
 - Reads and writes `todo.md`
@@ -71,6 +97,7 @@ Tags live in the same Markdown file. Define each tag once on its own line:
 - Use the pencil beside a task to edit it with a live preview; use the text-format button beside New todo to format a draft
 - Choose the folder that contains your todo file
 - Add, complete, delete, and reprioritize todos
+- Park todos until a preset, a custom date and time, or indefinitely
 - Reusable tags with names and colors; edit once to update every use
 - Tag management and assignment in the main window and menu bar
 - Deleting a tag removes it from open and completed todos

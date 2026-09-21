@@ -98,11 +98,11 @@ private struct HeaderView: View {
             Spacer()
 
             VStack(alignment: .trailing, spacing: 2) {
-                Text("\(store.document.openTodos.count)")
+                Text("\(store.activeTodos.count)")
                     .font(.title3.monospacedDigit())
                     .fontWeight(.semibold)
 
-                Text("open")
+                Text("active")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -210,6 +210,8 @@ private struct TodoBoardView: View {
                     PrioritySectionView(group: group, store: store)
                 }
 
+                ParkedSectionView(store: store)
+
                 if !store.document.completedTodos.isEmpty {
                     DoneSectionView(todos: store.document.completedTodos, store: store)
                 }
@@ -217,7 +219,8 @@ private struct TodoBoardView: View {
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .animation(.spring(response: 0.28, dampingFraction: 0.82), value: store.document.openTodos.map(\.id))
+        .animation(.spring(response: 0.28, dampingFraction: 0.82), value: store.activeTodos.map(\.id))
+        .animation(.spring(response: 0.28, dampingFraction: 0.82), value: store.parkedTodos.map(\.id))
         .animation(.spring(response: 0.28, dampingFraction: 0.82), value: store.document.completedTodos.map(\.id))
     }
 
@@ -226,11 +229,11 @@ private struct TodoBoardView: View {
             TodoPriorityGroup(
                 priority: priority,
                 title: priority.rawValue,
-                todos: store.document.openTodos.filter { $0.priority == priority }
+                todos: store.activeTodos.filter { $0.priority == priority }
             )
         }
 
-        let unprioritized = store.document.openTodos.filter { $0.priority == nil }
+        let unprioritized = store.activeTodos.filter { $0.priority == nil }
         if !unprioritized.isEmpty {
             groups.append(TodoPriorityGroup(priority: nil, title: "No Priority", todos: unprioritized))
         }
@@ -351,6 +354,7 @@ private struct EmptySectionRow: View {
 private struct TodoRow: View {
     var item: TodoItem
     @ObservedObject var store: TodoStore
+    @State private var isParkingPickerPresented = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -381,6 +385,11 @@ private struct TodoRow: View {
             CopyTodoButton(item: item, store: store)
             EditTodoButton(item: item, store: store)
             ItemTagsMenu(item: item, store: store)
+
+            if !item.isCompleted {
+                ParkingButton(item: item, store: store, onChooseDate: showParkingPicker)
+            }
+
             PriorityMenu(item: item, store: store)
 
             Button {
@@ -426,14 +435,29 @@ private struct TodoRow: View {
                 }
             }
 
+            if !item.isCompleted {
+                Divider()
+
+                Menu("Park…") {
+                    ParkingMenuContents(item: item, store: store, onChooseDate: showParkingPicker)
+                }
+            }
+
             Button("Delete", role: .destructive) {
                 store.delete(item)
             }
         }
+        .popover(isPresented: $isParkingPickerPresented, arrowEdge: .bottom) {
+            ParkingDateTimePicker(item: item, store: store)
+        }
+    }
+
+    private func showParkingPicker() {
+        isParkingPickerPresented = true
     }
 }
 
-private struct DragPreview: View {
+struct DragPreview: View {
     var item: TodoItem
 
     var body: some View {
@@ -446,7 +470,7 @@ private struct DragPreview: View {
     }
 }
 
-private struct PriorityMenu: View {
+struct PriorityMenu: View {
     var item: TodoItem
     @ObservedObject var store: TodoStore
 

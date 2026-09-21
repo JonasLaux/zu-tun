@@ -61,25 +61,45 @@ struct TodoTimelineProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<TodoTimelineEntry>) -> Void) {
-        let entry = loadEntry()
-        let nextRefresh = Calendar.current.date(byAdding: .minute, value: 5, to: Date()) ?? Date()
-        completion(Timeline(entries: [entry], policy: .after(nextRefresh)))
+        let now = Date()
+        let nextRefresh = now.addingTimeInterval(5 * 60)
+        do {
+            let document = try TodoFile.loadWidgetDocument()
+            // Supply future entries so parked tasks can return even when the
+            // app is closed and WidgetKit delays requesting a new timeline.
+            let returnDates = Set(document.openTodos.compactMap { item -> Date? in
+                guard case .until(let date) = item.parking, date > now else { return nil }
+                return date
+            }).sorted().prefix(64)
+            let entries = ([now] + returnDates).map { entry(for: document, at: $0) }
+            completion(Timeline(entries: entries, policy: .after(nextRefresh)))
+        } catch {
+            completion(Timeline(entries: [emptyEntry(at: now)], policy: .after(nextRefresh)))
+        }
     }
 
     private func loadEntry() -> TodoTimelineEntry {
         do {
             let document = try TodoFile.loadWidgetDocument()
-            let openTodos = document.openTodos
-            return TodoTimelineEntry(
-                date: Date(),
-                openTodos: Array(openTodos.prefix(12)),
-                totalOpenCount: openTodos.count,
-                completedCount: document.completedTodos.count,
-                tags: document.tags
-            )
+            return entry(for: document, at: Date())
         } catch {
-            return TodoTimelineEntry(date: Date(), openTodos: [], totalOpenCount: 0, completedCount: 0)
+            return emptyEntry(at: Date())
         }
+    }
+
+    private func entry(for document: TodoDocument, at date: Date) -> TodoTimelineEntry {
+        let activeTodos = document.activeTodos(at: date)
+        return TodoTimelineEntry(
+            date: date,
+            openTodos: Array(activeTodos.prefix(12)),
+            totalOpenCount: activeTodos.count,
+            completedCount: document.completedTodos.count,
+            tags: document.tags
+        )
+    }
+
+    private func emptyEntry(at date: Date) -> TodoTimelineEntry {
+        TodoTimelineEntry(date: date, openTodos: [], totalOpenCount: 0, completedCount: 0)
     }
 }
 
@@ -187,7 +207,7 @@ struct WidgetHeader: View {
     }
 
     private var countText: String {
-        family == .systemSmall ? "\(entry.totalOpenCount)" : "\(entry.totalOpenCount) open"
+        family == .systemSmall ? "\(entry.totalOpenCount)" : "\(entry.totalOpenCount) active"
     }
 
     private var headerFont: Font {

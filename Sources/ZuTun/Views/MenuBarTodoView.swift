@@ -14,6 +14,10 @@ struct MenuBarTodoView: View {
                 Label("Zu Tun", systemImage: "checklist")
                     .font(.headline)
 
+                Text("\(store.activeTodos.count) active")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
                 Spacer()
 
                 ManageTagsButton(store: store)
@@ -47,8 +51,8 @@ struct MenuBarTodoView: View {
                     .padding(10)
             }
 
-            if store.document.openTodos.isEmpty {
-                Text("Nothing open")
+            if store.activeTodos.isEmpty && store.parkedTodos.isEmpty {
+                Text("Nothing active")
                     .foregroundStyle(.secondary)
                     .italic()
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -59,12 +63,15 @@ struct MenuBarTodoView: View {
                         ForEach(compactGroups) { group in
                             CompactPrioritySection(group: group, store: store)
                         }
+
+                        CompactParkedSectionView(store: store)
                     }
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
                 .frame(maxHeight: 320)
-                .animation(.spring(response: 0.28, dampingFraction: 0.82), value: store.document.openTodos.map(\.id))
+                .animation(.spring(response: 0.28, dampingFraction: 0.82), value: store.activeTodos.map(\.id))
+                .animation(.spring(response: 0.28, dampingFraction: 0.82), value: store.parkedTodos.map(\.id))
             }
 
             Divider()
@@ -108,14 +115,14 @@ struct MenuBarTodoView: View {
 
     private var compactGroups: [CompactTodoGroup] {
         var groups = TodoPriority.allCases.compactMap { priority -> CompactTodoGroup? in
-            let todos = store.document.openTodos.filter { $0.priority == priority }
+            let todos = store.activeTodos.filter { $0.priority == priority }
             guard !todos.isEmpty else {
                 return nil
             }
             return CompactTodoGroup(priority: priority.rawValue, todos: todos)
         }
 
-        let unprioritized = store.document.openTodos.filter { $0.priority == nil }
+        let unprioritized = store.activeTodos.filter { $0.priority == nil }
         if !unprioritized.isEmpty {
             groups.append(CompactTodoGroup(priority: "No Priority", todos: unprioritized))
         }
@@ -162,6 +169,7 @@ private struct CompactPrioritySection: View {
 private struct CompactTodoRow: View {
     var item: TodoItem
     @ObservedObject var store: TodoStore
+    @State private var isParkingPickerPresented = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -187,8 +195,33 @@ private struct CompactTodoRow: View {
             CopyTodoButton(item: item, store: store)
             EditTodoButton(item: item, store: store)
             ItemTagsMenu(item: item, store: store)
+            ParkingButton(item: item, store: store, onChooseDate: showParkingPicker)
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 4)
+        .contextMenu {
+            Button {
+                store.copyForAgent(item)
+            } label: {
+                Label("Copy for Agent", systemImage: "square.and.arrow.up")
+            }
+
+            Divider()
+
+            Menu("Park…") {
+                ParkingMenuContents(item: item, store: store, onChooseDate: showParkingPicker)
+            }
+
+            Button("Mark Done") {
+                store.toggle(item)
+            }
+        }
+        .popover(isPresented: $isParkingPickerPresented, arrowEdge: .bottom) {
+            ParkingDateTimePicker(item: item, store: store)
+        }
+    }
+
+    private func showParkingPicker() {
+        isParkingPickerPresented = true
     }
 }

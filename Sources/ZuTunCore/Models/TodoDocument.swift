@@ -54,6 +54,27 @@ public struct TodoDocument: Equatable, Sendable {
             .sorted(by: TodoDocument.todoSort)
     }
 
+    public func activeTodos(at date: Date) -> [TodoItem] {
+        openTodos.filter { !$0.isParked(at: date) }
+    }
+
+    public func parkedTodos(at date: Date) -> [TodoItem] {
+        openTodos
+            .filter { $0.isParked(at: date) }
+            .sorted(by: TodoDocument.parkedTodoSort)
+    }
+
+    public func nextParkingDate(after date: Date) -> Date? {
+        todos
+            .compactMap { item -> Date? in
+                guard !item.isCompleted, case .until(let returnDate) = item.parking, returnDate > date else {
+                    return nil
+                }
+                return returnDate
+            }
+            .min()
+    }
+
     public var completedTodos: [TodoItem] {
         todos
             .filter(\.isCompleted)
@@ -226,6 +247,19 @@ public struct TodoDocument: Equatable, Sendable {
         }
 
         return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
+    }
+
+    private static func parkedTodoSort(lhs: TodoItem, rhs: TodoItem) -> Bool {
+        switch (lhs.parking, rhs.parking) {
+        case (.until(let leftDate), .until(let rightDate)) where leftDate != rightDate:
+            return leftDate < rightDate
+        case (.until, .indefinite):
+            return true
+        case (.indefinite, .until):
+            return false
+        default:
+            return todoSort(lhs: lhs, rhs: rhs)
+        }
     }
 
     private func normalizedTag(_ tag: TodoTag) -> TodoTag? {
