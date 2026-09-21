@@ -24,6 +24,10 @@ let package = Package(
         .testTarget(
             name: "ZuTunCoreTests",
             dependencies: ["ZuTunCore"]
+        ),
+        .testTarget(
+            name: "ZuTunTests",
+            dependencies: ["ZuTun"]
         )
     ]
 )

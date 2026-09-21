@@ -41,6 +41,7 @@ struct ContentView: View {
         }
         .toolbar {
             ToolbarItemGroup {
+                ManageTagsButton(store: store)
                 Button {
                     store.reloadFromDisk()
                 } label: {
@@ -367,14 +368,19 @@ private struct TodoRow: View {
             .buttonStyle(.plain)
             .help(item.isCompleted ? "Mark open" : "Mark done")
 
-            Text(item.title)
-                .font(.body)
-                .lineLimit(2)
-                .strikethrough(item.isCompleted)
-                .foregroundStyle(item.isCompleted ? .secondary : .primary)
+            VStack(alignment: .leading, spacing: 4) {
+                TodoTitleView(title: item.title, isCompleted: item.isCompleted)
+                    .font(.body)
+                if store.document.tags.contains(where: { item.tagIDs.contains($0.id) }) {
+                    TagBadges(item: item, tags: store.document.tags)
+                }
+            }
 
             Spacer(minLength: 8)
 
+            CopyTodoButton(item: item, store: store)
+            EditTodoButton(item: item, store: store)
+            ItemTagsMenu(item: item, store: store)
             PriorityMenu(item: item, store: store)
 
             Button {
@@ -394,6 +400,14 @@ private struct TodoRow: View {
             DragPreview(item: item)
         }
         .contextMenu {
+            Button {
+                store.copyForAgent(item)
+            } label: {
+                Label("Copy for Agent", systemImage: "square.and.arrow.up")
+            }
+
+            Divider()
+
             Button(item.isCompleted ? "Mark Open" : "Mark Done") {
                 withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                     store.toggle(item)
@@ -523,10 +537,14 @@ private struct ComposerView: View {
             .labelsHidden()
             .frame(width: 72)
 
-            TextField("New todo", text: $draftTitle)
+            TextField("New todo", text: $draftTitle, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
+                .lineLimit(1...5)
                 .focused(isFocused)
                 .onSubmit(onAdd)
+                .help("Return to add. Option-Return for a new line.")
+
+            FormatDraftButton(text: $draftTitle)
 
             Button(action: onAdd) {
                 Image(systemName: "plus")

@@ -2,12 +2,15 @@ import Foundation
 
 public enum TodoDocumentLine: Equatable, Sendable {
     case raw(String)
+    case tag(TodoTag)
     case todo(TodoItem)
 
     public var rendered: String {
         switch self {
         case .raw(let line):
             line
+        case .tag(let tag):
+            tag.markdownLine
         case .todo(let item):
             item.markdownLine
         }
@@ -19,6 +22,21 @@ public struct TodoDocument: Equatable, Sendable {
 
     public init(lines: [TodoDocumentLine] = []) {
         self.lines = lines
+    }
+
+    public var tags: [TodoTag] {
+        var seenIDs: Set<String> = []
+        return lines.compactMap { line in
+            guard case .tag(let tag) = line else {
+                return nil
+            }
+
+            let key = tag.id
+            guard seenIDs.insert(key).inserted else {
+                return nil
+            }
+            return tag
+        }
     }
 
     public var todos: [TodoItem] {
@@ -53,7 +71,7 @@ public struct TodoDocument: Equatable, Sendable {
         let item = TodoItem(
             isCompleted: false,
             priority: priority,
-            title: title.trimmingCharacters(in: .whitespacesAndNewlines)
+            title: TodoTextFormatting.normalizedTitle(title)
         )
 
         if let firstCompletedIndex = lines.firstIndex(where: { line in
@@ -103,6 +121,98 @@ public struct TodoDocument: Equatable, Sendable {
         return true
     }
 
+    @discardableResult
+    public mutating func upsertTag(_ tag: TodoTag) -> Bool {
+        guard let normalized = normalizedTag(tag) else {
+            return false
+        }
+
+        let tagLineIndexes = lines.enumerated().compactMap { index, line -> Int? in
+            guard case .tag = line else { return nil }
+            return index
+        }
+
+        let matchingIDIndexes = tagLineIndexes.filter { index in
+            guard case .tag(let existing) = lines[index] else { return false }
+            return existing.id == normalized.id
+        }
+
+        guard matchingIDIndexes.count <= 1 else {
+            return false
+        }
+
+        let hasDuplicateName = tagLineIndexes.contains { index in
+            guard case .tag(let existing) = lines[index] else { return false }
+            return existing.id != normalized.id
+                && existing.name.caseInsensitiveCompare(normalized.name) == .orderedSame
+        }
+        guard !hasDuplicateName else {
+            return false
+        }
+
+        if let index = matchingIDIndexes.first {
+            lines[index] = .tag(normalized)
+        } else {
+            lines.append(.tag(normalized))
+        }
+
+        return true
+    }
+
+    @discardableResult
+    public mutating func removeTag(id: String) -> Bool {
+        let hadTag = lines.contains { line in
+            guard case .tag(let tag) = line else { return false }
+            return tag.id == id
+        }
+
+        lines = lines.compactMap { line in
+            if case .tag(let tag) = line, tag.id == id {
+                return nil
+            }
+
+            if case .todo(var item) = line {
+                item.tagIDs.removeAll { $0 == id }
+                return .todo(item)
+            }
+
+            return line
+        }
+
+        return hadTag
+    }
+
+    @discardableResult
+    public mutating func setTagIDs(_ ids: [String], forTodoID id: UUID) -> Bool {
+        guard let index = lines.firstIndex(where: { line in
+            guard case .todo(let item) = line else { return false }
+            return item.id == id
+        }) else {
+            return false
+        }
+
+        guard case .todo(var item) = lines[index] else {
+            return false
+        }
+
+        let definedIDs = Set(tags.map(\.id))
+        let existingUnknownIDs = item.tagIDs.filter { !definedIDs.contains($0) }
+        guard ids.allSatisfy({ definedIDs.contains($0) || existingUnknownIDs.contains($0) }) else {
+            return false
+        }
+
+        var nextIDs: [String] = []
+        for tagID in ids + existingUnknownIDs {
+            if !nextIDs.contains(tagID) {
+                nextIDs.append(tagID)
+            }
+        }
+
+        item.tagIDs = nextIDs
+        lines[index] = .todo(item)
+        return true
+    }
+
     public func renderedMarkdown() -> String {
         lines.map(\.rendered).joined(separator: "\n") + "\n"
     }
@@ -116,5 +226,21 @@ public struct TodoDocument: Equatable, Sendable {
         }
 
         return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
+    }
+
+    private func normalizedTag(_ tag: TodoTag) -> TodoTag? {
+        let name = tag.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let id = tag.id.trimmingCharacters(in: .whitespacesAndNewlines)
+        let color = tag.color.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !name.isEmpty,
+              !id.isEmpty,
+              !id.contains(where: { $0.isNewline }),
+              !name.contains(where: { $0.isNewline }),
+              color.range(of: #"^#[0-9A-Fa-f]{6}$"#, options: .regularExpression) != nil else {
+            return nil
+        }
+
+        return TodoTag(id: id, name: name, color: color)
     }
 }

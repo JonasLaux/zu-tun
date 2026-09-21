@@ -40,6 +40,7 @@ struct TodoTimelineEntry: TimelineEntry {
     let openTodos: [TodoItem]
     let totalOpenCount: Int
     let completedCount: Int
+    var tags: [TodoTag] = []
 }
 
 struct TodoTimelineProvider: TimelineProvider {
@@ -73,7 +74,8 @@ struct TodoTimelineProvider: TimelineProvider {
                 date: Date(),
                 openTodos: Array(openTodos.prefix(12)),
                 totalOpenCount: openTodos.count,
-                completedCount: document.completedTodos.count
+                completedCount: document.completedTodos.count,
+                tags: document.tags
             )
         } catch {
             return TodoTimelineEntry(date: Date(), openTodos: [], totalOpenCount: 0, completedCount: 0)
@@ -94,7 +96,7 @@ struct ZuTunWidgetView: View {
             } else {
                 VStack(alignment: .leading, spacing: rowSpacing) {
                     ForEach(visibleTodos) { item in
-                        WidgetTodoRow(item: item, family: family)
+                        WidgetTodoRow(item: item, family: family, tags: entry.tags)
                     }
 
                     if overflowCount > 0 {
@@ -217,6 +219,7 @@ struct WidgetEmptyState: View {
 struct WidgetTodoRow: View {
     var item: TodoItem
     var family: WidgetFamily
+    var tags: [TodoTag] = []
 
     var body: some View {
         HStack(spacing: family == .systemSmall ? 7 : 9) {
@@ -233,13 +236,31 @@ struct WidgetTodoRow: View {
             }
             .buttonStyle(.plain)
 
-            Text(item.title)
+            Text(TodoTextFormatting.render(item.title))
                 .font(rowFont)
                 .fontWeight(.medium)
                 .lineLimit(family == .systemLarge ? 2 : 1)
                 .foregroundStyle(.primary)
 
             Spacer(minLength: 0)
+
+            if let tag = tags.first(where: { item.tagIDs.contains($0.id) }) {
+                let hex = UInt32(tag.color.dropFirst(), radix: 16) ?? 0x007AFF
+                HStack(spacing: 3) {
+                    Circle()
+                        .fill(Color(red: Double((hex >> 16) & 255) / 255,
+                                    green: Double((hex >> 8) & 255) / 255,
+                                    blue: Double(hex & 255) / 255))
+                        .frame(width: 6, height: 6)
+                    Text(tag.name).font(.caption2).lineLimit(1)
+                    let extra = tags.filter { item.tagIDs.contains($0.id) }.count - 1
+                    if extra > 0 {
+                        Text("+\(extra)").font(.caption2).fixedSize()
+                    }
+                }
+                .frame(maxWidth: 65)
+                .accessibilityLabel(tags.filter { item.tagIDs.contains($0.id) }.map(\.name).joined(separator: ", "))
+            }
 
             if family != .systemSmall {
                 Text(item.priority?.rawValue ?? "")

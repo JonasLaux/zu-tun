@@ -15,21 +15,32 @@ final class TodoStore: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published private(set) var lastLoadedAt: Date?
     @Published private(set) var completionEvent: TodoCompletionEvent?
+    @Published private(set) var copiedReferenceID: UUID?
     @Published private(set) var fileURL: URL
     @Published private(set) var widgetSyncHealth: WidgetSyncHealth
     @Published private(set) var installHealth = AppInstallHealth.current()
 
     private var lastKnownSignature: FileSignature?
     private var pollTask: Task<Void, Never>?
+    private var copyFeedbackTask: Task<Void, Never>?
     private nonisolated(unsafe) var locationObserver: NSObjectProtocol?
+    private let pasteboard: NSPasteboard
+    private let syncsWidget: Bool
 
-    init(fileURL: URL = TodoLocation.currentTodoURL) {
+    init(
+        fileURL: URL = TodoLocation.currentTodoURL,
+        pasteboard: NSPasteboard = .general,
+        syncsWidget: Bool = true
+    ) {
         self.fileURL = fileURL
+        self.pasteboard = pasteboard
+        self.syncsWidget = syncsWidget
         self.widgetSyncHealth = WidgetSyncHealth.current(todoURL: fileURL)
     }
 
     deinit {
         pollTask?.cancel()
+        copyFeedbackTask?.cancel()
         if let observer = locationObserver {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -78,13 +89,126 @@ final class TodoStore: ObservableObject {
     }
 
     func addTodo(title: String, priority: TodoPriority) {
-        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedTitle = TodoTextFormatting.normalizedTitle(title)
         guard !trimmedTitle.isEmpty else {
             return
         }
 
         document.appendTodo(title: trimmedTitle, priority: priority)
         saveDocument()
+    }
+
+    @discardableResult
+    func updateTitle(_ title: String, for item: TodoItem) -> Bool {
+        let title = TodoTextFormatting.normalizedTitle(title)
+        guard !title.isEmpty else { return false }
+        do {
+            guard try signature(for: fileURL) == lastKnownSignature,
+                  document.todos.contains(item) else {
+                errorMessage = "The todo changed while you were editing. Copy your text, reload, and try again."
+                return false
+            }
+            let previous = document
+            guard document.updateTodo(id: item.id, { $0.title = title }) else { return false }
+            guard saveDocument() else {
+                document = previous
+                return false
+            }
+            return true
+        } catch {
+            errorMessage = "Could not read the todo file: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    @discardableResult
+    func copyForAgent(_ item: TodoItem) -> Bool {
+        do {
+            let reference = try TodoLocation.withFolderAccess { _ in
+                guard try signature(for: fileURL) == lastKnownSignature,
+                      let index = document.lines.firstIndex(where: { line in
+                          if case .todo(let current) = line { return current == item }
+                          return false
+                      }) else {
+                    throw TodoCopyError.changed
+                }
+
+                let markdown = try String(contentsOf: fileURL, encoding: .utf8)
+                let reference = try TodoShareReference.prepare(
+                    item: item, lineNumber: index + 1, in: markdown, fileURL: fileURL
+                )
+                if reference.markdown != markdown {
+                    guard try String(contentsOf: fileURL, encoding: .utf8) == markdown else {
+                        throw TodoCopyError.changed
+                    }
+                    try reference.markdown.write(to: fileURL, atomically: true, encoding: .utf8)
+                }
+                return reference
+            }
+
+            document = TodoMarkdownParser.parse(reference.markdown)
+            lastKnownSignature = try signature(for: fileURL)
+            lastLoadedAt = Date()
+            errorMessage = nil
+            publishWidgetSnapshot()
+            if syncsWidget { WidgetCenter.shared.reloadAllTimelines() }
+
+            pasteboard.clearContents()
+            guard pasteboard.setString(reference.prompt, forType: .string) else {
+                errorMessage = "Could not copy to the clipboard. Please try again."
+                return false
+            }
+
+            copyFeedbackTask?.cancel()
+            copiedReferenceID = reference.referenceID
+            copyFeedbackTask = Task { [weak self] in
+                do { try await Task.sleep(for: .seconds(2)) } catch { return }
+                self?.copiedReferenceID = nil
+            }
+            return true
+        } catch {
+            errorMessage = "Could not copy this todo: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    @discardableResult
+    func saveTag(_ tag: TodoTag) -> Bool {
+        editTags { $0.upsertTag(tag) }
+    }
+
+    @discardableResult
+    func removeTag(_ tag: TodoTag) -> Bool {
+        editTags { $0.removeTag(id: tag.id) }
+    }
+
+    func setTags(_ ids: [String], for item: TodoItem) {
+        editTags { $0.setTagIDs(ids, forTodoID: item.id) }
+    }
+
+    @discardableResult
+    private func editTags(_ edit: (inout TodoDocument) -> Bool) -> Bool {
+        do {
+            guard try signature(for: fileURL) == lastKnownSignature else {
+                reloadFromDisk()
+                errorMessage = "The todo file changed. Please try your tag change again."
+                return false
+            }
+        } catch {
+            errorMessage = "Could not read the todo file: \(error.localizedDescription)"
+            return false
+        }
+        let previous = document
+        guard edit(&document) else {
+            document = previous
+            errorMessage = "Use a unique, nonempty tag name and a valid color. The todo or tag may have changed."
+            return false
+        }
+        guard saveDocument() else {
+            document = previous
+            return false
+        }
+        return true
     }
 
     func refreshWidgetSnapshot() {
@@ -286,6 +410,7 @@ final class TodoStore: ObservableObject {
     }
 
     private func publishWidgetSnapshot() {
+        guard syncsWidget else { return }
         do {
             try TodoFile.saveWidgetDocument(document)
         } catch {
@@ -307,6 +432,14 @@ final class TodoStore: ObservableObject {
 
     private func refreshInstallHealth() {
         installHealth = AppInstallHealth.current()
+    }
+}
+
+private enum TodoCopyError: LocalizedError {
+    case changed
+
+    var errorDescription: String? {
+        "The todo file changed. Reload and try copying again."
     }
 }
 

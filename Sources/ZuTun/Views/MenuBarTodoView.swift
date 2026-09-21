@@ -16,6 +16,8 @@ struct MenuBarTodoView: View {
 
                 Spacer()
 
+                ManageTagsButton(store: store)
+
                 Button {
                     store.reloadFromDisk()
                 } label: {
@@ -37,6 +39,13 @@ struct MenuBarTodoView: View {
             .padding(.vertical, 10)
 
             Divider()
+
+            if let errorMessage = store.errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .padding(10)
+            }
 
             if store.document.openTodos.isEmpty {
                 Text("Nothing open")
@@ -69,9 +78,13 @@ struct MenuBarTodoView: View {
                 .labelsHidden()
                 .frame(width: 68)
 
-                TextField("New todo", text: $draftTitle)
+                TextField("New todo", text: $draftTitle, axis: .vertical)
                     .textFieldStyle(.roundedBorder)
+                    .lineLimit(1...5)
                     .onSubmit(addDraft)
+                    .help("Return to add. Option-Return for a new line.")
+
+                FormatDraftButton(text: $draftTitle)
 
                 Button(action: addDraft) {
                     Image(systemName: "plus")
@@ -163,10 +176,17 @@ private struct CompactTodoRow: View {
             .buttonStyle(.plain)
             .help("Mark done")
 
-            Text(item.title)
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 3) {
+                TodoTitleView(title: item.title, compact: true)
+                if store.document.tags.contains(where: { item.tagIDs.contains($0.id) }) {
+                    TagBadges(item: item, tags: store.document.tags)
+                }
+            }
 
             Spacer(minLength: 8)
+            CopyTodoButton(item: item, store: store)
+            EditTodoButton(item: item, store: store)
+            ItemTagsMenu(item: item, store: store)
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 4)
