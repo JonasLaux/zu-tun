@@ -211,8 +211,8 @@ struct ParkedSectionView: View {
                 }
 
                 if isExpanded {
-                    ForEach(store.parkedTodos) { item in
-                        ParkedTodoRow(item: item, store: store)
+                    ForEach(todoDetailsRows(for: store.parkedTodos)) { row in
+                        ParkedTodoRow(item: row.item, store: store)
                     }
                 }
             }
@@ -268,62 +268,56 @@ struct ParkedTodoRow: View {
     let item: TodoItem
     @ObservedObject var store: TodoStore
     @State private var isParkingPickerPresented = false
+    @State private var isDetailsExpanded = false
 
     var body: some View {
-        HStack(spacing: 10) {
-            Button {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                    store.toggle(item)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 8) {
+                Button {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        store.toggle(item)
+                    }
+                } label: {
+                    Image(systemName: "circle")
+                        .font(.system(size: 18, weight: .medium))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 24, height: 24)
                 }
-            } label: {
-                Image(systemName: "circle")
-                    .font(.system(size: 18, weight: .medium))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 24, height: 24)
-            }
-            .buttonStyle(.plain)
-            .help("Mark done")
-            .accessibilityLabel("Mark \(item.title) done")
+                .buttonStyle(.plain)
+                .help("Mark done")
+                .accessibilityLabel("Mark \(item.title) done")
 
-            VStack(alignment: .leading, spacing: 4) {
-                TodoTitleView(title: item.title)
-                    .font(.body)
-
-                if store.document.tags.contains(where: { item.tagIDs.contains($0.id) }) {
-                    TagBadges(item: item, tags: store.document.tags)
+                if let details = item.details, !details.isEmpty {
+                    TodoDetailsToggle(
+                        title: item.title,
+                        compact: false,
+                        isExpanded: $isDetailsExpanded
+                    )
                 }
 
-                ParkingScheduleLabel(item: item, currentDate: store.currentDate)
+                VStack(alignment: .leading, spacing: 4) {
+                    TodoTitleView(title: item.title, expanded: true)
+                        .font(.body)
+
+                    if store.document.tags.contains(where: { item.tagIDs.contains($0.id) }) {
+                        TagBadges(item: item, tags: store.document.tags)
+                    }
+
+                    ParkingScheduleLabel(item: item, currentDate: store.currentDate)
+                }
+
+                Spacer(minLength: 4)
+
+                TodoActionsMenu(item: item, store: store)
             }
 
-            Spacer(minLength: 8)
-
-            CopyTodoButton(item: item, store: store)
-            EditTodoButton(item: item, store: store)
-            ItemTagsMenu(item: item, store: store)
-
-            Button {
-                store.setParking(nil, for: item)
-            } label: {
-                Image(systemName: "arrow.uturn.backward")
-                    .foregroundStyle(.secondary)
-                    .frame(width: 24, height: 24)
+            if isDetailsExpanded, let details = item.details, !details.isEmpty {
+                TodoDetailsView(details: details)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 60)
+                    .padding(.top, 4)
             }
-            .buttonStyle(.plain)
-            .help("Bring back now")
-            .accessibilityLabel("Bring back \(item.title) now")
-
-            Button {
-                showParkingPicker()
-            } label: {
-                Image(systemName: "clock")
-                    .foregroundStyle(.secondary)
-                    .frame(width: 24, height: 24)
-            }
-            .buttonStyle(.plain)
-            .help("Change parking time")
-            .accessibilityLabel("Change parking time for \(item.title)")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 7)
@@ -423,8 +417,8 @@ struct CompactParkedSectionView: View {
                 .accessibilityHint(isExpanded ? "Collapse parked todos" : "Show parked todos")
 
                 if isExpanded {
-                    ForEach(store.parkedTodos) { item in
-                        CompactParkedTodoRow(item: item, store: store)
+                    ForEach(todoDetailsRows(for: store.parkedTodos)) { row in
+                        CompactParkedTodoRow(item: row.item, store: store)
                     }
                 }
             }
@@ -438,49 +432,47 @@ private struct CompactParkedTodoRow: View {
     let item: TodoItem
     @ObservedObject var store: TodoStore
     @State private var isParkingPickerPresented = false
+    @State private var isDetailsExpanded = false
 
     var body: some View {
-        HStack(spacing: 8) {
-            Button {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                    store.toggle(item)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 8) {
+                Button {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        store.toggle(item)
+                    }
+                } label: {
+                    Image(systemName: "circle")
+                        .frame(width: 20, height: 20)
                 }
-            } label: {
-                Image(systemName: "circle")
-                    .frame(width: 20, height: 20)
+                .buttonStyle(.plain)
+                .help("Mark done")
+                .accessibilityLabel("Mark \(item.title) done")
+
+                if let details = item.details, !details.isEmpty {
+                    TodoDetailsToggle(
+                        title: item.title,
+                        compact: true,
+                        isExpanded: $isDetailsExpanded
+                    )
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    TodoTitleView(title: item.title, compact: true, expanded: true)
+                    ParkingScheduleLabel(item: item, currentDate: store.currentDate)
+                }
+
+                Spacer(minLength: 8)
+
+                TodoActionsMenu(item: item, store: store)
             }
-            .buttonStyle(.plain)
-            .help("Mark done")
-            .accessibilityLabel("Mark \(item.title) done")
 
-            VStack(alignment: .leading, spacing: 3) {
-                TodoTitleView(title: item.title, compact: true)
-                ParkingScheduleLabel(item: item, currentDate: store.currentDate)
+            if isDetailsExpanded, let details = item.details, !details.isEmpty {
+                TodoDetailsView(details: details, compact: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 48)
+                    .padding(.top, 3)
             }
-
-            Spacer(minLength: 8)
-
-            Button {
-                store.setParking(nil, for: item)
-            } label: {
-                Image(systemName: "arrow.uturn.backward")
-            }
-            .buttonStyle(.plain)
-            .help("Bring back now")
-            .accessibilityLabel("Bring back \(item.title) now")
-
-            Button {
-                showParkingPicker()
-            } label: {
-                Image(systemName: "clock")
-            }
-            .buttonStyle(.plain)
-            .help("Change parking time")
-            .accessibilityLabel("Change parking time for \(item.title)")
-
-            CopyTodoButton(item: item, store: store)
-            EditTodoButton(item: item, store: store)
-            ItemTagsMenu(item: item, store: store)
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 4)

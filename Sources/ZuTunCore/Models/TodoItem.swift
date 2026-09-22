@@ -9,6 +9,7 @@ public struct TodoItem: Equatable, Identifiable, Sendable {
     public var tagIDs: [String]
     public var referenceID: UUID?
     public var parking: TodoParking?
+    public var details: TodoDetails?
 
     public init(
         id: UUID = UUID(),
@@ -18,7 +19,8 @@ public struct TodoItem: Equatable, Identifiable, Sendable {
         title: String,
         tagIDs: [String] = [],
         referenceID: UUID? = nil,
-        parking: TodoParking? = nil
+        parking: TodoParking? = nil,
+        details: TodoDetails? = nil
     ) {
         self.id = id
         self.indent = indent
@@ -28,6 +30,7 @@ public struct TodoItem: Equatable, Identifiable, Sendable {
         self.tagIDs = tagIDs
         self.referenceID = referenceID
         self.parking = parking
+        self.details = details.flatMap { $0.isEmpty ? nil : $0 }
     }
 
     public func isParked(at date: Date) -> Bool {
@@ -50,6 +53,34 @@ public struct TodoItem: Equatable, Identifiable, Sendable {
         let tags = tagIDs.isEmpty ? "" : " <!-- zutun-tags: \(tagIDsJSON) -->"
         let parking = parking.map { " <!-- zutun-parked: \($0.markdownValue) -->" } ?? ""
         return "\(indent)- [\(checkmark)] \(priorityText)\(TodoTextFormatting.markdownTitle(title))\(reference)\(tags)\(parking)"
+    }
+
+    /// The task header and its optional owned details callout.
+    ///
+    /// A details callout requires a persisted reference ID so that the parser
+    /// can prove ownership after a task is moved. The store materializes that
+    /// ID before saving a nonempty details value.
+    public var markdownBlock: String {
+        guard let details, !details.isEmpty, let referenceID else {
+            return markdownLine
+        }
+
+        let detailIndent = indent + "  "
+        let owner = "<!-- zutun-details-for: \(referenceID.uuidString) -->"
+        var lines = [
+            markdownLine,
+            "\(detailIndent)> [!zutun]- Details \(owner)"
+        ]
+
+        if !details.state.isEmpty {
+            lines.append("\(detailIndent)> **State:** \(TodoTextFormatting.markdownTitle(details.state))")
+        }
+        if !details.outcome.isEmpty {
+            lines.append("\(detailIndent)> **Outcome:** \(TodoTextFormatting.markdownTitle(details.outcome))")
+        }
+
+        lines.append("\(detailIndent)> <!-- zutun-details-end -->")
+        return lines.joined(separator: "\n")
     }
 
     private var tagIDsJSON: String {

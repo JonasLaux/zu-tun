@@ -105,18 +105,53 @@ final class TodoStore: ObservableObject {
 
     @discardableResult
     func updateTitle(_ title: String, for item: TodoItem) -> Bool {
+        updateTodo(title: title, details: item.details, for: item)
+    }
+
+    @discardableResult
+    func updateTodo(title: String, details: TodoDetails?, for item: TodoItem) -> Bool {
         let title = TodoTextFormatting.normalizedTitle(title)
         guard !title.isEmpty else { return false }
+        let normalizedDetails = details.map {
+            TodoDetails(
+                state: TodoTextFormatting.normalizedTitle($0.state),
+                outcome: TodoTextFormatting.normalizedTitle($0.outcome)
+            )
+        }
+        let nextDetails = normalizedDetails.flatMap { $0.isEmpty ? nil : $0 }
         do {
             guard try signature(for: fileURL) == lastKnownSignature,
                   document.todos.contains(item) else {
+                reloadFromDisk()
                 errorMessage = "The todo changed while you were editing. Copy your text, reload, and try again."
                 return false
             }
             let previous = document
-            guard document.updateTodo(id: item.id, { $0.title = title }) else { return false }
+            let previousSignature = lastKnownSignature
+            if nextDetails != nil, let referenceID = item.referenceID,
+               document.todos.filter({ $0.referenceID == referenceID }).count != 1 {
+                errorMessage = "This todo's stable ID is duplicated. Give each task its own ID before editing details."
+                return false
+            }
+            let referenceID = item.referenceID ?? (nextDetails == nil ? nil : UUID())
+            guard document.updateTodo(id: item.id, {
+                $0.title = title
+                $0.details = nextDetails
+                $0.referenceID = referenceID
+            }) else { return false }
+            // Do not write an apparently valid edit into an ambiguous or
+            // malformed details block left in the source by an external editor.
+            if let nextDetails, let referenceID {
+                let savedItems = TodoMarkdownParser.parse(document.renderedMarkdown()).todos
+                    .filter { $0.referenceID == referenceID }
+                guard savedItems.count == 1, savedItems.first?.details == nextDetails else {
+                    document = previous
+                    errorMessage = "This todo has conflicting details in the Markdown file. Fix its details block before saving."
+                    return false
+                }
+            }
             guard saveDocument() else {
-                document = previous
+                if lastKnownSignature == previousSignature { document = previous }
                 return false
             }
             return true
@@ -131,16 +166,14 @@ final class TodoStore: ObservableObject {
         do {
             let reference = try TodoLocation.withFolderAccess { _ in
                 guard try signature(for: fileURL) == lastKnownSignature,
-                      let index = document.lines.firstIndex(where: { line in
-                          if case .todo(let current) = line { return current == item }
-                          return false
-                      }) else {
+                      document.todos.contains(item),
+                      let lineNumber = document.physicalLineNumber(forTodoID: item.id) else {
                     throw TodoCopyError.changed
                 }
 
                 let markdown = try String(contentsOf: fileURL, encoding: .utf8)
                 let reference = try TodoShareReference.prepare(
-                    item: item, lineNumber: index + 1, in: markdown, fileURL: fileURL
+                    item: item, lineNumber: lineNumber, in: markdown, fileURL: fileURL
                 )
                 if reference.markdown != markdown {
                     guard try String(contentsOf: fileURL, encoding: .utf8) == markdown else {
@@ -204,13 +237,14 @@ final class TodoStore: ObservableObject {
             return false
         }
         let previous = document
+        let previousSignature = lastKnownSignature
         guard edit(&document) else {
             document = previous
             errorMessage = "Use a unique, nonempty tag name and a valid color. The todo or tag may have changed."
             return false
         }
         guard saveDocument() else {
-            document = previous
+            if lastKnownSignature == previousSignature { document = previous }
             return false
         }
         return true
@@ -270,9 +304,10 @@ final class TodoStore: ObservableObject {
                 return false
             }
             let previous = document
+            let previousSignature = lastKnownSignature
             guard document.updateTodo(id: item.id, { $0.parking = parking }) else { return false }
             guard saveDocument() else {
-                document = previous
+                if lastKnownSignature == previousSignature { document = previous }
                 return false
             }
             currentDate = now
@@ -323,12 +358,10 @@ final class TodoStore: ObservableObject {
         }
 
         if changed {
-            saveDocument()
-        } else {
-            reloadFromDisk()
+            return saveDocument()
         }
-
-        return changed
+        reloadFromDisk()
+        return false
     }
 
     @discardableResult
@@ -338,12 +371,10 @@ final class TodoStore: ObservableObject {
         }
 
         if changed {
-            saveDocument()
-        } else {
-            reloadFromDisk()
+            return saveDocument()
         }
-
-        return changed
+        reloadFromDisk()
+        return false
     }
 
     private func deleteTodo(id: UUID) {
@@ -402,6 +433,9 @@ final class TodoStore: ObservableObject {
     private func saveDocument() -> Bool {
         do {
             try TodoLocation.withFolderAccess { _ in
+                guard try signature(for: fileURL) == lastKnownSignature else {
+                    throw TodoSaveError.changed
+                }
                 try TodoFile.save(document, to: fileURL)
             }
             lastKnownSignature = try signature(for: fileURL)
@@ -410,6 +444,10 @@ final class TodoStore: ObservableObject {
             publishWidgetSnapshot()
             WidgetCenter.shared.reloadAllTimelines()
             return true
+        } catch TodoSaveError.changed {
+            reloadFromDisk()
+            errorMessage = "The todo file changed. Please try your change again."
+            return false
         } catch {
             errorMessage = "Could not write \(fileURL.path): \(error.localizedDescription)"
             updateWidgetSyncHealth()
@@ -482,6 +520,10 @@ final class TodoStore: ObservableObject {
     private func refreshInstallHealth() {
         installHealth = AppInstallHealth.current()
     }
+}
+
+private enum TodoSaveError: Error {
+    case changed
 }
 
 private enum TodoCopyError: LocalizedError {

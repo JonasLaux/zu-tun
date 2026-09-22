@@ -264,8 +264,8 @@ private struct PrioritySectionView: View {
             if group.todos.isEmpty {
                 EmptySectionRow()
             } else {
-                ForEach(group.todos) { item in
-                    TodoRow(item: item, store: store)
+                ForEach(todoDetailsRows(for: group.todos)) { row in
+                    TodoRow(item: row.item, store: store)
                 }
             }
         }
@@ -297,8 +297,8 @@ private struct DoneSectionView: View {
         VStack(alignment: .leading, spacing: 8) {
             SectionHeader(title: "Done", count: todos.count)
 
-            ForEach(todos) { item in
-                TodoRow(item: item, store: store)
+            ForEach(todoDetailsRows(for: todos)) { row in
+                TodoRow(item: row.item, store: store)
             }
         }
         .padding(10)
@@ -355,52 +355,51 @@ private struct TodoRow: View {
     var item: TodoItem
     @ObservedObject var store: TodoStore
     @State private var isParkingPickerPresented = false
+    @State private var isDetailsExpanded = false
 
     var body: some View {
-        HStack(spacing: 10) {
-            Button {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                    store.toggle(item)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 8) {
+                Button {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        store.toggle(item)
+                    }
+                } label: {
+                    Image(systemName: item.isCompleted ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 18, weight: .medium))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(item.isCompleted ? .green : .secondary)
+                        .frame(width: 24, height: 24)
                 }
-            } label: {
-                Image(systemName: item.isCompleted ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 18, weight: .medium))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(item.isCompleted ? .green : .secondary)
-                    .frame(width: 24, height: 24)
-            }
-            .buttonStyle(.plain)
-            .help(item.isCompleted ? "Mark open" : "Mark done")
+                .buttonStyle(.plain)
+                .help(item.isCompleted ? "Mark open" : "Mark done")
 
-            VStack(alignment: .leading, spacing: 4) {
-                TodoTitleView(title: item.title, isCompleted: item.isCompleted)
-                    .font(.body)
-                if store.document.tags.contains(where: { item.tagIDs.contains($0.id) }) {
-                    TagBadges(item: item, tags: store.document.tags)
+                if let details = item.details, !details.isEmpty {
+                    TodoDetailsToggle(
+                        title: item.title,
+                        compact: false,
+                        isExpanded: $isDetailsExpanded
+                    )
                 }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    TodoTitleView(title: item.title, isCompleted: item.isCompleted, expanded: true)
+                        .font(.body)
+                    if store.document.tags.contains(where: { item.tagIDs.contains($0.id) }) {
+                        TagBadges(item: item, tags: store.document.tags)
+                    }
+                }
+
+                Spacer(minLength: 4)
+
+                TodoActionsMenu(item: item, store: store)
             }
-
-            Spacer(minLength: 8)
-
-            CopyTodoButton(item: item, store: store)
-            EditTodoButton(item: item, store: store)
-            ItemTagsMenu(item: item, store: store)
-
-            if !item.isCompleted {
-                ParkingButton(item: item, store: store, onChooseDate: showParkingPicker)
+            if isDetailsExpanded, let details = item.details, !details.isEmpty {
+                TodoDetailsView(details: details)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 60)
+                    .padding(.top, 4)
             }
-
-            PriorityMenu(item: item, store: store)
-
-            Button {
-                store.delete(item)
-            } label: {
-                Image(systemName: "trash")
-                    .foregroundStyle(.secondary)
-                    .frame(width: 24, height: 24)
-            }
-            .buttonStyle(.plain)
-            .help("Delete")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 7)
@@ -493,7 +492,7 @@ struct PriorityMenu: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 24, height: 24)
         }
-        .menuStyle(.button)
+        .menuStyle(.borderlessButton)
         .fixedSize()
         .help("Priority")
     }

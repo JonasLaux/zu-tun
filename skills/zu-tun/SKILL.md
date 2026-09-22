@@ -43,17 +43,44 @@ Priorities are optional but preferred:
 - `P2`: normal default
 - `P3`: low priority or later
 
-Keep task text short, concrete, and action-oriented. Preserve headings, notes, ordering, and completed items unless the user asks for cleanup.
+Keep the task overview short and concrete: the task, a brief description, and necessary links. Preserve headings, notes, ordering, and completed items unless the user asks for cleanup. Do not use `todo.md` as a parallel task database or append-only work log.
 
-Task text may contain visual line breaks while each todo remains one physical
-Markdown line. Use `<br>` for a visual newline and `<br><br>` for a blank visual
-line. `<br/>` and `<br />` are accepted case-insensitively. Preserve inline
-Markdown and existing `zutun-id` and `zutun-tags` comments on that line. The
-pencil and formatting popovers use Return for a new line and Command-Return to
+The task header remains one physical Markdown line. Use `<br>` for a visual
+newline and `<br><br>` for a blank visual line. `<br/>` and `<br />` are accepted
+case-insensitively. Preserve inline Markdown and existing `zutun-id` and
+`zutun-tags` comments on that line. An optional collapsed Details block may
+carry the current State and a concise factual Outcome:
+
+```md
+- [ ] (P2) Investigate first-chat latency <!-- zutun-id: UUID -->
+  > [!zutun]- Details <!-- zutun-details-for: UUID -->
+  > **State:** Investigating
+  > **Outcome:** Reproduced in preview; [trace](https://example.com/trace)
+  > <!-- zutun-details-end -->
+```
+
+State and Outcome support inline Markdown and links. Use `<br>` for line breaks
+within a field; the app saves multiline values in that form.
+
+Place the block immediately below its task header, with no blank line between
+them. Indent every Details line two spaces relative to the task indentation. The
+Details owner UUID must equal the task ID; never duplicate `zutun-id` there.
+Treat Details as owned task content: move or delete them with the task,
+preserve them during unrelated edits and after completion, and update State in
+place at meaningful changes. Both fields are optional; omit empty fields and
+remove an empty Details block while keeping the task ID. Details have no
+checkbox or status semantics; list controls remain authoritative for completion
+and visibility. Add or edit Details through **More actions > Edit** and expand or collapse them
+with the chevron. The widget shows the task header only. Create a stable task
+ID when first saving Details. Copy for Agent reads the current task and its
+owned Details.
+
+The Edit and formatting popovers use Return for a new line and Command-Return to
 save or apply; the quick composer uses Option-Return for a new line and Return
 to add. Normal rows show all explicit lines, while widgets keep compact limits.
 To display a literal `<br>`, write `&lt;br&gt;`. Never use a physical
-continuation line or a new checkbox for the wrapped text.
+continuation line or a new checkbox for wrapped header text. Details are the
+only supported indented block.
 
 ## Parked Tasks
 
@@ -115,9 +142,9 @@ Tags live in the same Markdown file. Define each tag once on its own line:
 
 ## Shared Todo References
 
-**Copy for Agent** in the app copies a prompt that invokes the global `zu-tun` skill and identifies one todo by its file path and `<!-- zutun-id: UUID -->` comment. Search for the UUID in that file; the copied title and line number are hints and may have changed. Read the current task and nearby notes/subtasks before starting. If the ID is missing or appears on more than one task, ask rather than guessing.
+**Copy for Agent** in the app copies a prompt that invokes the global `zu-tun` skill and identifies one todo by its file path and `<!-- zutun-id: UUID -->` comment. Search for the UUID in that file; the copied title, Details, and line number are hints and may have changed. Read the current task and its owned Details before starting. If the ID is missing or appears on more than one task, ask rather than guessing.
 
-Preserve the ID comment when renaming, reprioritizing, completing, or moving a task. Do not reuse it for a new or duplicated task. It can appear before or after a `zutun-tags` comment. Tasks without an ID remain valid; the app adds one only when sharing.
+Preserve the ID comment when renaming, reprioritizing, completing, or moving a task. Do not reuse it for a new or duplicated task. It can appear before or after a `zutun-tags` comment. Tasks without an ID remain valid; the app adds one when sharing or first saving Details.
 
 ## Editing Workflow
 

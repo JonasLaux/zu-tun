@@ -20,7 +20,7 @@ struct TodoTitleView: View {
                     .help(content.text)
             }
             ForEach(content.links) { link in
-                NeonTodoLink(link: link)
+                NeonTodoLink(link: link, expanded: expanded)
             }
         }
     }
@@ -28,6 +28,7 @@ struct TodoTitleView: View {
 
 private struct NeonTodoLink: View {
     let link: TodoLinks.Item
+    var expanded = false
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hovering = false
@@ -51,7 +52,8 @@ private struct NeonTodoLink: View {
                             y: hovering && !reduceMotion ? -1 : 0)
                 Text(link.label)
                     .underline()
-                    .lineLimit(1)
+                    .lineLimit(expanded ? nil : 1)
+                    .fixedSize(horizontal: false, vertical: expanded)
                     .truncationMode(.middle)
             }
             .font(.caption.weight(.medium))

@@ -38,11 +38,7 @@ public struct TodoShareReference: Equatable, Sendable {
         }
 
         let document = TodoMarkdownParser.parse(markdown)
-        let lineIndex = lineNumber - 1
-        guard lineIndex < document.lines.count else {
-            throw TodoShareReferenceError.invalidLineNumber(lineNumber)
-        }
-        guard case .todo(let currentItem) = document.lines[lineIndex] else {
+        guard let currentItem = document.todo(atPhysicalLineNumber: lineNumber) else {
             throw TodoShareReferenceError.selectedLineIsNotTodo(lineNumber)
         }
         guard semanticallyMatches(item, currentItem) else {
@@ -64,19 +60,20 @@ public struct TodoShareReference: Equatable, Sendable {
         }()
 
         let sourceBytes = Array(markdown.utf8)
-        let sourceLine = String(decoding: sourceBytes[lineRanges[lineIndex]], as: UTF8.self)
+        let sourceLine = String(decoding: sourceBytes[lineRanges[lineNumber - 1]], as: UTF8.self)
         let outputMarkdown: String
         if currentItem.referenceID != nil {
             outputMarkdown = markdown
         } else {
             let patchedLine = addReferenceMarker(to: sourceLine, referenceID: referenceID)
             var patchedBytes = sourceBytes
-            patchedBytes.replaceSubrange(lineRanges[lineIndex], with: patchedLine.utf8)
+            patchedBytes.replaceSubrange(lineRanges[lineNumber - 1], with: patchedLine.utf8)
             outputMarkdown = String(decoding: patchedBytes, as: UTF8.self)
         }
 
         let prompt = makePrompt(
             title: currentItem.title,
+            details: currentItem.details,
             referenceID: referenceID,
             lineNumber: lineNumber,
             fileURL: fileURL
@@ -109,6 +106,8 @@ public struct TodoShareReference: Equatable, Sendable {
             && expected.title == current.title
             && expected.tagIDs == current.tagIDs
             && expected.referenceID == current.referenceID
+            && expected.parking == current.parking
+            && expected.details == current.details
     }
 
     private static func sourceLineRanges(in markdown: String) -> [Range<Int>] {
@@ -175,6 +174,7 @@ public struct TodoShareReference: Equatable, Sendable {
 
     private static func makePrompt(
         title: String,
+        details: TodoDetails?,
         referenceID: UUID,
         lineNumber: Int,
         fileURL: URL
@@ -189,8 +189,24 @@ public struct TodoShareReference: Equatable, Sendable {
         Current title: \(title)
         Stable todo ID: \(referenceID.uuidString)
         Line hint: \(lineNumber) (1-based)
+        \(detailsSnapshot(details))
 
-        If the line moved, search case-insensitively for the UUID \(referenceID.uuidString) inside a zutun-id comment and verify the UUID before editing. Preserve the existing marker. Stop and ask for clarification if the item is missing or ambiguous, including when the stable ID appears more than once.
+        Read the current owned Details callout directly below this task when it exists. Update its State and Outcome fields as the work changes, and keep those details out of the task title and overview. If the line moved, search case-insensitively for the UUID \(referenceID.uuidString) inside a zutun-id comment and verify the UUID before editing. Preserve the existing marker and keep the owned Details block with the task. Stop and ask for clarification if the item is missing or ambiguous, including when the stable ID appears more than once.
         """
+    }
+
+    private static func detailsSnapshot(_ details: TodoDetails?) -> String {
+        guard let details, !details.isEmpty else {
+            return ""
+        }
+
+        var snapshot = ""
+        if !details.state.isEmpty {
+            snapshot += "Current State: \(details.state)\n"
+        }
+        if !details.outcome.isEmpty {
+            snapshot += "Current Outcome: \(details.outcome)\n"
+        }
+        return snapshot
     }
 }

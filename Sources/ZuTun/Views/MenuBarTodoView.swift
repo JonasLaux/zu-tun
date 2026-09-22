@@ -159,8 +159,8 @@ private struct CompactPrioritySection: View {
                     .frame(height: 1)
             }
 
-            ForEach(group.todos) { item in
-                CompactTodoRow(item: item, store: store)
+            ForEach(todoDetailsRows(for: group.todos)) { row in
+                CompactTodoRow(item: row.item, store: store)
             }
         }
     }
@@ -170,32 +170,47 @@ private struct CompactTodoRow: View {
     var item: TodoItem
     @ObservedObject var store: TodoStore
     @State private var isParkingPickerPresented = false
+    @State private var isDetailsExpanded = false
 
     var body: some View {
-        HStack(spacing: 8) {
-            Button {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                    store.toggle(item)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 8) {
+                Button {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        store.toggle(item)
+                    }
+                } label: {
+                    Image(systemName: "circle")
+                        .frame(width: 20, height: 20)
                 }
-            } label: {
-                Image(systemName: "circle")
-                    .frame(width: 20, height: 20)
-            }
-            .buttonStyle(.plain)
-            .help("Mark done")
+                .buttonStyle(.plain)
+                .help("Mark done")
 
-            VStack(alignment: .leading, spacing: 3) {
-                TodoTitleView(title: item.title, compact: true)
-                if store.document.tags.contains(where: { item.tagIDs.contains($0.id) }) {
-                    TagBadges(item: item, tags: store.document.tags)
+                if let details = item.details, !details.isEmpty {
+                    TodoDetailsToggle(
+                        title: item.title,
+                        compact: true,
+                        isExpanded: $isDetailsExpanded
+                    )
                 }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    TodoTitleView(title: item.title, compact: true, expanded: true)
+                    if store.document.tags.contains(where: { item.tagIDs.contains($0.id) }) {
+                        TagBadges(item: item, tags: store.document.tags)
+                    }
+                }
+
+                Spacer(minLength: 4)
+                TodoActionsMenu(item: item, store: store)
             }
 
-            Spacer(minLength: 8)
-            CopyTodoButton(item: item, store: store)
-            EditTodoButton(item: item, store: store)
-            ItemTagsMenu(item: item, store: store)
-            ParkingButton(item: item, store: store, onChooseDate: showParkingPicker)
+            if isDetailsExpanded, let details = item.details, !details.isEmpty {
+                TodoDetailsView(details: details, compact: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 48)
+                    .padding(.top, 3)
+            }
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 4)

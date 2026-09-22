@@ -12,16 +12,34 @@ public enum TodoDocumentLine: Equatable, Sendable {
         case .tag(let tag):
             tag.markdownLine
         case .todo(let item):
-            item.markdownLine
+            item.markdownBlock
         }
     }
 }
 
 public struct TodoDocument: Equatable, Sendable {
-    public var lines: [TodoDocumentLine]
+    public var lines: [TodoDocumentLine] {
+        didSet { physicalLineCounts = nil }
+    }
+    // Parsed details may occupy more physical lines than their canonical
+    // rendering. Keep the source span until a mutation canonicalizes the
+    // document, so line hints continue to address the original file.
+    private var physicalLineCounts: [Int]?
 
     public init(lines: [TodoDocumentLine] = []) {
         self.lines = lines
+        self.physicalLineCounts = nil
+    }
+
+    internal init(lines: [TodoDocumentLine], physicalLineCounts: [Int]) {
+        self.lines = lines
+        self.physicalLineCounts = physicalLineCounts.count == lines.count
+            ? physicalLineCounts
+            : nil
+    }
+
+    public static func == (lhs: TodoDocument, rhs: TodoDocument) -> Bool {
+        lhs.lines == rhs.lines
     }
 
     public var tags: [TodoTag] {
@@ -105,6 +123,8 @@ public struct TodoDocument: Equatable, Sendable {
         } else {
             lines.append(.todo(item))
         }
+
+        synchronizePhysicalLineCounts()
     }
 
     @discardableResult
@@ -121,6 +141,7 @@ public struct TodoDocument: Equatable, Sendable {
         if case .todo(var item) = lines[index] {
             update(&item)
             lines[index] = .todo(item)
+            synchronizePhysicalLineCounts()
             return true
         }
 
@@ -139,6 +160,7 @@ public struct TodoDocument: Equatable, Sendable {
         }
 
         lines.remove(at: index)
+        synchronizePhysicalLineCounts()
         return true
     }
 
@@ -177,6 +199,7 @@ public struct TodoDocument: Equatable, Sendable {
             lines.append(.tag(normalized))
         }
 
+        synchronizePhysicalLineCounts()
         return true
     }
 
@@ -200,6 +223,7 @@ public struct TodoDocument: Equatable, Sendable {
             return line
         }
 
+        synchronizePhysicalLineCounts()
         return hadTag
     }
 
@@ -231,11 +255,65 @@ public struct TodoDocument: Equatable, Sendable {
 
         item.tagIDs = nextIDs
         lines[index] = .todo(item)
+        synchronizePhysicalLineCounts()
         return true
+    }
+
+    /// Returns the 1-based physical source line containing a todo header.
+    public func physicalLineNumber(forTodoID id: UUID) -> Int? {
+        var lineNumber = 1
+        for (index, line) in lines.enumerated() {
+            if case .todo(let item) = line, item.id == id {
+                return lineNumber
+            }
+            lineNumber += physicalLineCount(at: index)
+        }
+        return nil
+    }
+
+    /// Returns the todo whose header starts on the given 1-based physical line.
+    /// Lines inside an owned details block are intentionally not todos.
+    public func todo(atPhysicalLineNumber lineNumber: Int) -> TodoItem? {
+        guard lineNumber > 0 else {
+            return nil
+        }
+
+        var startLine = 1
+        for (index, line) in lines.enumerated() {
+            if startLine == lineNumber, case .todo(let item) = line {
+                return item
+            }
+
+            startLine += physicalLineCount(at: index)
+            if startLine > lineNumber {
+                return nil
+            }
+        }
+        return nil
     }
 
     public func renderedMarkdown() -> String {
         lines.map(\.rendered).joined(separator: "\n") + "\n"
+    }
+
+    private func physicalLineCount(at index: Int) -> Int {
+        guard let physicalLineCounts,
+              physicalLineCounts.indices.contains(index) else {
+            return Self.physicalLineCount(of: lines[index].rendered)
+        }
+        return max(physicalLineCounts[index], 1)
+    }
+
+    private mutating func synchronizePhysicalLineCounts() {
+        physicalLineCounts = lines.map { Self.physicalLineCount(of: $0.rendered) }
+    }
+
+    private static func physicalLineCount(of text: String) -> Int {
+        text.reduce(into: 1) { count, character in
+            if character == "\n" {
+                count += 1
+            }
+        }
     }
 
     private static func todoSort(lhs: TodoItem, rhs: TodoItem) -> Bool {

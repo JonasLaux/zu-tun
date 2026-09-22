@@ -18,12 +18,18 @@ struct EditTodoButton: View {
                 .frame(width: 24, height: 24)
         }
         .buttonStyle(.plain)
-        .help("Edit text and formatting")
-        .accessibilityLabel("Edit todo text")
+        .help("Edit text, state, and outcome")
+        .accessibilityLabel("Edit todo text and details")
         .popover(isPresented: $editing) {
             if let original {
-                TodoTextEditor(initialText: original.title, actionTitle: "Save", errorMessage: store.errorMessage) {
-                    store.updateTitle($0, for: original)
+                TodoTextEditor(
+                    initialText: original.title,
+                    initialDetails: original.details,
+                    actionTitle: "Save",
+                    errorMessage: store.errorMessage,
+                    showsDetails: true
+                ) { text, details in
+                    store.updateTodo(title: text, details: details, for: original)
                 }
             }
         }
@@ -41,26 +47,39 @@ struct FormatDraftButton: View {
         .help("Format todo text")
         .accessibilityLabel("Format todo text")
         .popover(isPresented: $editing) {
-            TodoTextEditor(initialText: text, actionTitle: "Apply") {
-                text = TodoTextFormatting.normalizedTitle($0)
+            TodoTextEditor(initialText: text, actionTitle: "Apply", showsDetails: false) { formattedText, _ in
+                text = TodoTextFormatting.normalizedTitle(formattedText)
                 return true
             }
         }
     }
 }
 
-private struct TodoTextEditor: View {
+struct TodoTextEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State private var text: String
+    @State private var state: String
+    @State private var outcome: String
     @StateObject private var controller = MarkdownEditorController()
     let actionTitle: String
     var errorMessage: String?
-    let onSave: (String) -> Bool
+    let showsDetails: Bool
+    let onSave: (String, TodoDetails?) -> Bool
 
-    init(initialText: String, actionTitle: String, errorMessage: String? = nil, onSave: @escaping (String) -> Bool) {
+    init(
+        initialText: String,
+        initialDetails: TodoDetails? = nil,
+        actionTitle: String,
+        errorMessage: String? = nil,
+        showsDetails: Bool = true,
+        onSave: @escaping (String, TodoDetails?) -> Bool
+    ) {
         _text = State(initialValue: initialText)
+        _state = State(initialValue: initialDetails?.state ?? "")
+        _outcome = State(initialValue: initialDetails?.outcome ?? "")
         self.actionTitle = actionTitle
         self.errorMessage = errorMessage
+        self.showsDetails = showsDetails
         self.onSave = onSave
     }
 
@@ -82,6 +101,40 @@ private struct TodoTextEditor: View {
                 .frame(height: 110)
                 .overlay(RoundedRectangle(cornerRadius: 5).stroke(.separator))
 
+            if showsDetails {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Optional details")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Spacer()
+
+                        if !draftDetails.isEmpty {
+                            Button("Clear") {
+                                state = ""
+                                outcome = ""
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Remove current state and outcome")
+                            .accessibilityLabel("Clear current state and outcome")
+                        }
+                    }
+
+                    TextField("Current state (optional)", text: $state, axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
+                        .lineLimit(1...2)
+                        .accessibilityLabel("Current state")
+                        .accessibilityHint("Optional short description of the todo's current state.")
+
+                    TextField("Outcome (optional)", text: $outcome, axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
+                        .lineLimit(1...3)
+                        .accessibilityLabel("Outcome")
+                        .accessibilityHint("Optional concise description of the achieved or verified result.")
+                }
+            }
+
             Text("Preview").font(.caption).foregroundStyle(.secondary)
             ScrollView {
                 TodoTitleView(title: text, expanded: true)
@@ -101,7 +154,7 @@ private struct TodoTextEditor: View {
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Button(actionTitle) {
-                    if onSave(text) { dismiss() }
+                    if onSave(text, draftDetails) { dismiss() }
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.return, modifiers: .command)
@@ -110,6 +163,13 @@ private struct TodoTextEditor: View {
         }
         .padding(16)
         .frame(width: 440)
+    }
+
+    private var draftDetails: TodoDetails {
+        TodoDetails(
+            state: state.trimmingCharacters(in: .whitespacesAndNewlines),
+            outcome: outcome.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
     }
 
     private func formatButton(_ title: String, symbol: String, prefix: String, suffix: String) -> some View {
